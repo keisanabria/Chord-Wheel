@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Chord Wheel - Interactive Music Tool</title>
+<!-- BEGIN: External Resources -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- END: External Resources -->
+<!-- BEGIN: Custom Configuration -->
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            tonic: '#fbbf24', // Gold/Yellow
+            subdominant: '#2dd4bf', // Teal
+            dominant: '#fb7185', // Red/Orange
+            bgDark: '#0f172a',
+            surface: '#1e293b'
+          }
+        }
+      }
+    }
+  </script>
+<!-- END: Custom Configuration -->
+<!-- BEGIN: Styles -->
+<style data-purpose="layout-and-animations">
+    body {
+      background-color: #0f172a;
+      color: #f8fafc;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    .chord-segment {
+      transition: transform 0.2s ease, opacity 0.2s ease;
+      cursor: pointer;
+    }
+
+    .chord-segment:hover {
+      transform: scale(1.02);
+      filter: brightness(1.2);
+    }
+
+    .chord-segment.active {
+      filter: brightness(1.3) drop-shadow(0 0 8px rgba(255, 255, 255, 0.3));
+    }
+
+    .guitar-highlight {
+      stroke: #fff;
+      stroke-width: 3px;
+      stroke-dasharray: 4;
+    }
+
+    @keyframes pulse-arrow {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
+    }
+
+    .resolution-arrow {
+      animation: pulse-arrow 2s infinite ease-in-out;
+    }
+  </style>
+<!-- END: Styles -->
+</head>
+<body class="min-h-screen flex flex-col items-center p-4 md:p-8">
+<!-- BEGIN: App Header -->
+<header class="w-full max-w-4xl mb-8 text-center" data-purpose="app-header">
+<h1 class="text-4xl font-bold tracking-tight mb-2">Chord Wheel</h1>
+<p class="text-slate-400">Explore diatonic harmonies and guitar-friendly voicings</p>
+</header>
+<!-- END: App Header -->
+<!-- BEGIN: Main Content -->
+<main class="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+<!-- BEGIN: Left Column - Controls & Wheel -->
+<section class="flex flex-col items-center space-y-6" data-purpose="wheel-container">
+<!-- Key Selection Controls -->
+<div class="w-full bg-surface p-6 rounded-2xl shadow-xl border border-slate-700 space-y-4">
+<div class="flex flex-col sm:flex-row gap-4 items-center justify-between">
+<div class="w-full sm:w-1/2">
+<label class="block text-sm font-medium text-slate-400 mb-1" for="key-selector">Select Key</label>
+<select class="w-full bg-bgDark border-slate-600 rounded-md text-white focus:ring-tonic focus:border-tonic" id="key-selector">
+<option value="C">C Major</option>
+<option value="C#">C# Major</option>
+<option value="D">D Major</option>
+<option value="Eb">Eb Major</option>
+<option value="E">E Major</option>
+<option value="F">F Major</option>
+<option value="F#">F# Major</option>
+<option value="G">G Major</option>
+<option value="Ab">Ab Major</option>
+<option value="A">A Major</option>
+<option value="Bb">Bb Major</option>
+<option value="B">B Major</option>
+</select>
+</div>
+</div>
+</div>
+<!-- SVG Chord Wheel -->
+<div class="relative w-full max-w-md aspect-square bg-surface rounded-full p-4 shadow-2xl border border-slate-700 flex items-center justify-center">
+<svg class="w-full h-full drop-shadow-lg" id="chord-wheel-svg" viewbox="0 0 400 400">
+<!-- Definitions for markers/gradients -->
+<defs>
+<marker id="arrowhead" markerheight="7" markerwidth="10" orient="auto" refx="0" refy="3.5">
+<polygon fill="#fb7185" points="0 0, 10 3.5, 0 7"></polygon>
+</marker>
+</defs>
+<!-- This group will be populated by JavaScript -->
+<g id="segments-group"></g>
+<!-- Inner circle branding/status -->
+<circle cx="200" cy="200" fill="#0f172a" r="60" stroke="#334155" stroke-width="2"></circle>
+<text class="uppercase" fill="#fff" font-size="24" font-weight="bold" id="center-key-display" text-anchor="middle" x="200" y="205">C</text>
+<text class="uppercase tracking-widest" fill="#64748b" font-size="10" text-anchor="middle" x="200" y="225">Major</text>
+</svg>
+</div>
+</section>
+<!-- END: Left Column -->
+<!-- BEGIN: Right Column - Details Panel -->
+<section class="bg-surface rounded-2xl shadow-xl border border-slate-700 p-8 min-h-[500px] flex flex-col" data-purpose="chord-detail-panel" id="detail-panel">
+<div class="flex-grow flex flex-col items-center justify-center text-center space-y-4 opacity-60" id="no-selection">
+<div class="w-16 h-16 border-2 border-dashed border-slate-500 rounded-full flex items-center justify-center">
+<span class="text-2xl">?</span>
+</div>
+<p>Select a chord segment to see details</p>
+</div>
+<div class="hidden animate-in fade-in slide-in-from-bottom-4 duration-500" id="chord-details"><div class="flex justify-between items-start mb-6">
+<div>
+<h2 class="text-5xl font-black text-white" id="detail-name">C</h2>
+<p class="text-xl font-mono text-tonic mt-1" id="detail-roman">I</p>
+</div>
+<div class="px-3 py-1 rounded text-xs font-bold uppercase tracking-wider bg-tonic/20 text-tonic border border-tonic/30" id="function-tag">
+            Tonic
+          </div>
+</div>
+<div class="grid grid-cols-1 gap-6">
+<!-- Chord Construction -->
+<div>
+<h3 class="text-slate-400 text-sm font-semibold uppercase tracking-widest mb-3">Triad Notes</h3>
+<div class="flex gap-2" id="detail-notes">
+<!-- Note bubbles -->
+</div>
+</div>
+<!-- Guitar Status -->
+<div class="bg-bgDark/50 p-4 rounded-xl border border-slate-700" id="guitar-status-card">
+<h3 class="text-slate-400 text-sm font-semibold mb-2">Fun Fact:</h3>
+<div class="flex items-center space-x-3">
+<div id="guitar-icon-container">
+<!-- SVG Icon injected by JS -->
+</div>
+<p class="text-sm text-slate-300" id="guitar-desc">Open-position available.</p>
+</div>
+</div>
+<!-- Chord Diagram Section -->
+<div class="">
+<h3 class="text-slate-400 text-sm font-semibold uppercase tracking-widest mb-3">Chord Diagram</h3>
+<div class="bg-bgDark/30 rounded-xl p-4 flex flex-col items-center justify-center border border-slate-700/50 min-h-[180px]" id="chord-diagram-container">
+<!-- SVG rendered here -->
+</div>
+</div>
+<!-- Theory context -->
+<div class="space-y-4">
+<h3 class="text-slate-400 text-sm font-semibold uppercase tracking-widest mb-2">Description</h3>
+<p class="text-slate-300 leading-relaxed italic" id="detail-theory">
+               The primary chord of the key, providing the strongest sense of home and resolution.
+             </p>
+</div>
+</div></div>
+</section>
+<!-- END: Right Column -->
+</main>
+<!-- END: Main Content -->
+<!-- BEGIN: Footer -->
+<footer class="mt-12 text-slate-500 text-xs text-center py-6 border-t border-slate-800 w-full max-w-4xl">
+    © 2026 • Made by Keishlyany Sanabria • MATE4997-036 • UPRM
+  </footer>
+<!-- END: Footer -->
+<!-- BEGIN: JavaScript Logic -->
+<script data-purpose="music-logic">
+    const chromaticScale = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+    const majorScalePattern = [0, 2, 4, 5, 7, 9, 11]; // W-W-H-W-W-W-H
+    const chordTypes = ["maj", "min", "min", "maj", "maj", "min", "dim"];
+    const romanNumerals = ["I", "ii", "iii", "IV", "V", "vi", "vii°"];
+    const functions = ["Tonic", "Supertonic", "Mediant", "Subdominant", "Dominant", "Submediant", "Leading Tone"];
+    const functionGroups = ["tonic", "subdominant", "subdominant", "subdominant", "dominant", "tonic", "dominant"];
+    
+    const guitarFriendlyChords = ["C", "G", "D", "A", "E", "Am", "Dm", "Em", "F", "B°", "C#", "D#m", "E#m", "F#", "G#m", "A#m", "B#°", "F#m", "G#", "Bm", "C#°", "Eb", "Fm", "Gm", "Ab", "Bb", "Cm", "D°", "B", "C#m", "D#°", "E°", "B", "E#°", "F#°", "Bbm", "G°", "G#°", "A°", "Ebm", "Abm", "Bb°"];
+
+    const chordFretboardData = {
+      "C": ['NoClip', 'x', 3, 2, 0, 1, 0],
+      "G": ['NoClip', 3, 2, 0, 0, 3, 3],
+      "A": ['NoClip', 'x', 0, 2, 2, 2, 0],
+      "Am": ['NoClip', 'x', 0, 2, 2, 1, 0],
+      "D": ['NoClip', 'x', 'x', 0, 2, 3, 2],
+      "Dm": ['NoClip', 'x', 'x', 0, 2, 3, 1],
+      "E": ['NoClip', 0, 2, 2, 1, 0, 0],
+      "Em": ['NoClip', 0, 2, 2, 0, 0, 0],
+      "F": [1, 0, 3, 3, 2, 0, 0],
+      "B°": ['NoClip', 'x', 2, 3, 4, 3, 'x'],
+      "C#": ['NoClip', 'x', 4, 3, 1, 2, 1],
+      "D#m": ['NoClip', 'x', 'x', 1, 3, 4, 2],
+      "E#m": [1, 0, 3, 3, 0, 0, 0],
+      "F#": ['NoClip', 2, 4, 4, 3, 2, 2],
+      "G#m": ['NoClip', 4, 2, 1, 1, 0, 4],
+      "A#m": ['NoClip', 'x', 1, 3, 3, 2, 1],
+      "B#°": ['NoClip', 'x', 3, 1, 'x', 1, 2],
+      "F#m": ['NoClip', 'x', 'x', 4, 2, 2, 2],
+      "G#": ['NoClip', 4, 3, 1, 1, 1, 4],
+      "Bm": ['NoClip', 'x', 2, 4, 4, 3, 2],
+      "C#°": ['NoClip', 'x', 4, 2, 0, 2, 0],
+      "Eb": ['NoClip', 'x', 'x', 1, 3, 'x', 3],
+      "Fm": ['NoClip', 1, 3, 3, 1, 1, 1],
+      "Gm": ['NoClip', 3, 1, 0, 0, 3, 3],
+      "Ab": ['NoClip', 4, 3, 1, 1, 1, 4],
+      "Bb": ['NoClip', 'x', 1, 0, 3, 3, 1],
+      "Cm": ['NoClip', 'x', 3, 1, 0, 1, 3],
+      "D°": ['NoClip', 'x', 'x', 0, 1, 3, 1],
+      "B": ['NoClip', 'x', 2, 4, 4, 4, 2],
+      "C#m": ['NoClip', 'x', 4, 2, 1, 2, 0],
+      "D#°": ['NoClip', 'x', 'x', 1, 2, 4, 2],
+      "E°": ['NoClip', 3, 4, 2, 3, 'x', 'x'],
+      "E#°": ['NoClip', 1, 2, 3, 1, 0, 'x'],
+      "F#°": ['NoClip', 2, 0, 'x', 2, 1, 2],
+      "Bbm": ['NoClip', 'x', 1, 3, 3, 2, 1],
+      "G°": ['NoClip', 3, 1, 'x', 0, 2, 3],
+      "G#°": ['NoClip', 4, 2, 0, 4, 0, 4],
+      "A°": ['NoClip', 'x', 0, 1, 2, 1, 'x'],
+      "Ebm": ['NoClip', 'x', 'x', 1, 3, 4, 2],
+      "Abm": ['NoClip', 4, 2, 1, 1, 0, 4],
+      "Bb°": ['NoClip', 'x', 'x', 'x', 3, 2, 0]
+    };
+
+    function getNoteName(index) {
+      return chromaticScale[((index % 12) + 12) % 12];
+    }
+
+    const keyOverrides = {
+      "C#": ["C#", "D#", "E#", "F#", "G#", "A#", "B#"],
+      "E":  ["E", "F#", "G#", "A", "B", "C#", "D#"],
+      "F#": ["F#", "G#", "A#", "B", "C#", "D#", "E#"],
+      "Cb": ["Cb", "Db", "Eb", "Fb", "Gb", "Ab", "Bb"],
+      "Gb": ["Gb", "Ab", "Bb", "Cb", "Db", "Eb", "F"],
+      "A": ["A", "B", "C#", "D", "E", "F#", "G#"],
+    };
+
+    function getScale(keyRoot) {
+      if (keyOverrides[keyRoot]) return keyOverrides[keyRoot];
+      const startIndex = chromaticScale.indexOf(keyRoot);
+      return majorScalePattern.map(interval => getNoteName(startIndex + interval));
+    }
+
+    function getTriad(scale, index) {
+      const root = scale[index];
+      const third = scale[(index + 2) % 7];
+      const fifth = scale[(index + 4) % 7];
+      return [root, third, fifth];
+    }
+
+    function getChordName(root, type) {
+      if (type === "min") return root + "m";
+      if (type === "dim") return root + "°";
+      return root;
+    }
+
+    function generateChordSVG(data) {
+      const clipFret = data[0];
+      const hasClip = clipFret !== 'NoClip';
+      const fingering = data.slice(1); // the 6 strings
+
+      const width = 140;
+      const height = 160;
+      const margin = { top: 30, right: 20, bottom: 20, left: 20 };
+      const gridWidth = width - margin.left - margin.right;
+      const gridHeight = height - margin.top - margin.bottom;
+      const stringSpacing = gridWidth / 5;
+      const fretSpacing = gridHeight / 4;
+      const stringNames = ['E', 'A', 'D', 'G', 'B', 'e'];
+
+      let svg = `<svg class="mx-auto" height="${height}" viewBox="0 0 ${width} ${height}" width="${width}">`;
+      
+      // String name labels
+      stringNames.forEach((name, i) => {
+        svg += `<text fill="#64748b" font-size="10" text-anchor="middle" x="${margin.left + i * stringSpacing}" y="12">${name}</text>`;
+      });
+
+      // Clip bar or open/muted markers above the nut
+      if (hasClip) {
+        // Draw the barre line across all strings at the specified fret position
+        const barreY = margin.top + (clipFret - 0.5) * fretSpacing;
+        
+        // Draw a thick barre line (curved rectangle to look like a finger barring)
+        svg += `<rect x="${margin.left - 3}" y="${barreY - 4}" width="${gridWidth + 6}" height="8" rx="4" fill="#fb7185" opacity="0.9"></rect>`;
+      } else {
+        // No clip: show open/muted indicators per string
+        fingering.forEach((pos, i) => {
+          const x = margin.left + i * stringSpacing;
+          if (pos === 'x') {
+            svg += `<text fill="#ef4444" font-size="12" font-weight="bold" text-anchor="middle" x="${x}" y="25">×</text>`;
+          } else if (pos === 0) {
+            svg += `<circle cx="${x}" cy="22" fill="none" r="3.5" stroke="#fbbf24" stroke-width="1.5"></circle>`;
+          }
+        });
+      }
+
+      // Nut (top bar)
+      svg += `<line stroke="#f8fafc" stroke-width="3" x1="${margin.left}" x2="${margin.left + gridWidth}" y1="${margin.top}" y2="${margin.top}"></line>`;
+
+      // Fret lines
+      for (let i = 1; i <= 4; i++) {
+        const y = margin.top + i * fretSpacing;
+        svg += `<line stroke="#475569" stroke-width="1" x1="${margin.left}" x2="${margin.left + gridWidth}" y1="${y}" y2="${y}"></line>`;
+      }
+
+      // String lines
+      for (let i = 0; i < 6; i++) {
+        const x = margin.left + i * stringSpacing;
+        svg += `<line stroke="#475569" stroke-width="1" x1="${x}" x2="${x}" y1="${margin.top}" y2="${margin.top + gridHeight}"></line>`;
+      }
+      
+      // Draw finger dots
+      fingering.forEach((pos, i) => {
+        if (typeof pos === 'number' && pos > 0) {
+          const x = margin.left + i * stringSpacing;
+          const y = margin.top + (pos - 0.5) * fretSpacing;
+          svg += `<circle cx="${x}" cy="${y}" fill="#fbbf24" r="6"></circle>`;
+        }
+      });
+
+      svg += '</svg>';
+      return svg;
+    }
+  </script>
+<script data-purpose="ui-interactions">
+    let currentKey = "C";
+    let selectedChordIndex = null;
+    let guitarHighlightEnabled = false;
+
+    const segmentsGroup = document.getElementById('segments-group');
+    const keySelector = document.getElementById('key-selector');
+    const guitarToggle = document.getElementById('guitar-toggle');
+    const toggleThumb = document.getElementById('toggle-thumb');
+
+    function init() {
+      renderWheel();
+      keySelector.addEventListener('change', (e) => {
+        currentKey = e.target.value;
+        document.getElementById('center-key-display').textContent = currentKey;
+        selectedChordIndex = null;
+        updateDetailPanel();
+        renderWheel();
+      });
+
+      guitarToggle.addEventListener('click', () => {
+        guitarHighlightEnabled = !guitarHighlightEnabled;
+        guitarToggle.classList.toggle('bg-tonic', guitarHighlightEnabled);
+        guitarToggle.classList.toggle('bg-slate-600', !guitarHighlightEnabled);
+        toggleThumb.classList.toggle('translate-x-6', guitarHighlightEnabled);
+        toggleThumb.classList.toggle('translate-x-1', !guitarHighlightEnabled);
+        renderWheel();
+      });
+    }
+
+    function renderWheel() {
+      segmentsGroup.innerHTML = '';
+      const scale = getScale(currentKey);
+      const centerX = 200;
+      const centerY = 200;
+      const innerRadius = 80;
+      const outerRadius = 180;
+      const numSegments = 7;
+      const angleStep = (2 * Math.PI) / numSegments;
+      const startAngle = -Math.PI / 2;
+
+      scale.forEach((root, i) => {
+        const chordName = getChordName(root, chordTypes[i]);
+        const isGuitarFriendly = guitarFriendlyChords.includes(chordName);
+        
+        const a1 = startAngle + i * angleStep;
+        const a2 = startAngle + (i + 1) * angleStep;
+
+        const x1 = centerX + outerRadius * Math.cos(a1);
+        const y1 = centerY + outerRadius * Math.sin(a1);
+        const x2 = centerX + outerRadius * Math.cos(a2);
+        const y2 = centerY + outerRadius * Math.sin(a2);
+        const x3 = centerX + innerRadius * Math.cos(a2);
+        const y3 = centerY + innerRadius * Math.sin(a2);
+        const x4 = centerX + innerRadius * Math.cos(a1);
+        const y4 = centerY + innerRadius * Math.sin(a1);
+
+        const pathData = `M ${x1} ${y1} A ${outerRadius} ${outerRadius} 0 0 1 ${x2} ${y2} L ${x3} ${y3} A ${innerRadius} ${innerRadius} 0 0 0 ${x4} ${y4} Z`;
+
+        const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        group.setAttribute('class', `chord-segment ${selectedChordIndex === i ? 'active' : ''}`);
+        group.setAttribute('data-index', i);
+        group.onclick = () => selectChord(i);
+
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute('d', pathData);
+        
+        let color = '#334155';
+        if (functionGroups[i] === 'tonic') color = '#fbbf24';
+        if (functionGroups[i] === 'subdominant') color = '#2dd4bf';
+        if (functionGroups[i] === 'dominant') color = '#fb7185';
+        
+        path.setAttribute('fill', color);
+        path.setAttribute('fill-opacity', '0.8');
+        path.setAttribute('stroke', '#0f172a');
+        path.setAttribute('stroke-width', '2');
+
+        if (guitarHighlightEnabled && isGuitarFriendly) {
+          path.setAttribute('class', 'guitar-highlight');
+        }
+
+        group.appendChild(path);
+
+        const labelAngle = a1 + angleStep / 2;
+        const labelRadius = (innerRadius + outerRadius) / 2;
+        const lx = centerX + labelRadius * Math.cos(labelAngle);
+        const ly = centerY + labelRadius * Math.sin(labelAngle);
+
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute('x', lx);
+        text.setAttribute('y', ly - 5);
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('fill', '#000');
+        text.setAttribute('font-weight', 'bold');
+        text.setAttribute('font-size', '16');
+        text.textContent = chordName;
+        group.appendChild(text);
+
+        const roman = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        roman.setAttribute('x', lx);
+        roman.setAttribute('y', ly + 15);
+        roman.setAttribute('text-anchor', 'middle');
+        roman.setAttribute('fill', '#000');
+        roman.setAttribute('font-size', '10');
+        roman.setAttribute('opacity', '0.7');
+        roman.textContent = romanNumerals[i];
+        group.appendChild(roman);
+
+        segmentsGroup.appendChild(group);
+      });
+
+      drawResolutionArrow(centerX, centerY, outerRadius + 10);
+    }
+
+    function drawResolutionArrow(cx, cy, r) {
+      const numSegments = 7;
+      const angleStep = (2 * Math.PI) / numSegments;
+      const startAngle = -Math.PI / 2;
+      
+      const angleV = startAngle + 4.5 * angleStep;
+      const angleI = startAngle + 0.5 * angleStep;
+      
+      const x1 = cx + r * Math.cos(angleV);
+      const y1 = cy + r * Math.sin(angleV);
+      const x2 = cx + r * Math.cos(angleI);
+      const y2 = cy + r * Math.sin(angleI);
+
+      const arrowPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      arrowPath.setAttribute('d', `M ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2}`);
+      arrowPath.setAttribute('fill', 'none');
+      arrowPath.setAttribute('stroke', '#fb7185');
+      arrowPath.setAttribute('stroke-width', '2');
+      arrowPath.setAttribute('marker-end', 'url(#arrowhead)');
+      arrowPath.setAttribute('class', 'resolution-arrow');
+      segmentsGroup.appendChild(arrowPath);
+    }
+
+    function selectChord(index) {
+      selectedChordIndex = index;
+      renderWheel();
+      updateDetailPanel();
+    }
+
+    function updateDetailPanel() {
+      const details = document.getElementById('chord-details');
+      const placeholder = document.getElementById('no-selection');
+      const diagramContainer = document.getElementById('chord-diagram-container');
+
+      if (selectedChordIndex === null) {
+        details.classList.add('hidden');
+        placeholder.classList.remove('hidden');
+        return;
+      }
+
+      placeholder.classList.add('hidden');
+      details.classList.remove('hidden');
+
+      const scale = getScale(currentKey);
+      const root = scale[selectedChordIndex];
+      const type = chordTypes[selectedChordIndex];
+      const chordName = getChordName(root, type);
+      const triad = getTriad(scale, selectedChordIndex);
+      const isGuitarFriendly = guitarFriendlyChords.includes(chordName);
+
+      document.getElementById('detail-name').textContent = chordName;
+      document.getElementById('detail-roman').textContent = romanNumerals[selectedChordIndex];
+      
+      const funcTag = document.getElementById('function-tag');
+      funcTag.textContent = functions[selectedChordIndex];
+      
+      const fGroup = functionGroups[selectedChordIndex];
+      funcTag.className = "px-3 py-1 rounded text-xs font-bold uppercase tracking-wider border ";
+      if(fGroup === 'tonic') funcTag.classList.add('bg-tonic/20', 'text-tonic', 'border-tonic/30');
+      else if(fGroup === 'subdominant') funcTag.classList.add('bg-subdominant/20', 'text-subdominant', 'border-subdominant/30');
+      else funcTag.classList.add('bg-dominant/20', 'text-dominant', 'border-dominant/30');
+
+      const notesContainer = document.getElementById('detail-notes');
+      notesContainer.innerHTML = '';
+      triad.forEach(n => {
+        const span = document.createElement('span');
+        span.className = "w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-bold text-white border border-slate-600";
+        span.textContent = n;
+        notesContainer.appendChild(span);
+      });
+
+      const guitarCard = document.getElementById('guitar-status-card');
+      const guitarIcon = document.getElementById('guitar-icon-container');
+      const guitarDesc = document.getElementById('guitar-desc');
+
+      if (isGuitarFriendly) {
+        guitarCard.className = "bg-tonic/10 p-4 rounded-xl border border-tonic/30";
+        guitarIcon.innerHTML = `<svg class="w-6 h-6 text-tonic" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>`;
+        guitarDesc.textContent = "There are other ways to play the same chord!";
+        
+        const fingering = chordFretboardData[chordName];
+        if (fingering) {
+            diagramContainer.innerHTML = generateChordSVG(fingering);
+        } else {
+            diagramContainer.innerHTML = '<p class="text-xs text-slate-500 italic">No open position diagram available.</p>';
+        }
+      } else {
+        guitarCard.className = "bg-bgDark/50 p-4 rounded-xl border border-slate-700 opacity-60";
+        guitarIcon.innerHTML = `<svg class="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>`;
+        guitarDesc.textContent = "Barre chords or advanced shapes required.";
+        diagramContainer.innerHTML = '<p class="text-xs text-slate-500 italic">No open position voicing available.</p>';
+      }
+
+      const theoryTexts = [
+        "The tonic is the center of gravity, where the music feels completely at rest.",
+        "The supertonic acts as a bridge, often moving towards the dominant chord.",
+        "The mediant shares many notes with the tonic, providing a softer transition.",
+        "The subdominant creates a sense of moving away from home, building gentle tension.",
+        "The dominant chord contains the leading tone, creating a strong urge to resolve to the Tonic.",
+        "The submediant is the relative minor, often used to create a more emotional or deceptive cadence.",
+        "The leading tone chord is the most unstable, pulling sharply back to the key's root."
+      ];
+      document.getElementById('detail-theory').textContent = theoryTexts[selectedChordIndex];
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+<!-- END: JavaScript Logic -->
+</body></html>
